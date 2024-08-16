@@ -1,6 +1,6 @@
 module minikube-testing
 
-go 1.23.0
+go 1.23
 
 require github.com/docker/docker v27.1.2+incompatible
 

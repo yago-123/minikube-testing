@@ -1,6 +1,12 @@
 .PHONY: all
-all: main
+all: lint main
 
 .PHONY: main
 main:
-	go build -o minikube-testing main.go
+	@echo "Building main..."
+	@go build -o minikube-testing main.go
+
+.PHONY: lint
+lint:
+	@echo "Running linter..."
+	@golangci-lint run ./...
