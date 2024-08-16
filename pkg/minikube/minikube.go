@@ -8,6 +8,8 @@ import (
 
 type Minikube interface {
 	Create(version string, nodes, cpusPerNode, memoryPerNode uint) error
+	Deploy(app string) error
+	DeployWithHelm() error
 	Destroy() error
 }
 
@@ -41,6 +43,14 @@ func (mc *MinikubeController) Create(version string, nodes, cpusPerNode, memoryP
 		return fmt.Errorf("failed to start minikube: %w", err)
 	}
 
+	return nil
+}
+
+func (mc *MinikubeController) Deploy(app string) error {
+	return nil
+}
+
+func (mc *MinikubeController) DeployWithHelm() error {
 	return nil
 }
 
