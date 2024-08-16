@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"minikube-testing/pkg/docker"
 	"minikube-testing/pkg/minikube"
 	"os"
 )
@@ -12,6 +13,9 @@ func main() {
 
 	mini.Create("1.20.0", 1, 2, 2048)
 	mini.Destroy()
+
+	dock := docker.NewDockerController()
+	dock.BuildImage("my-image", "latest", "Dockerfile")
 }
 
 //TIP See GoLand help at <a href="https://www.jetbrains.com/help/go/">jetbrains.com/help/go/</a>.
