@@ -13,19 +13,19 @@ type Minikube interface {
 	Destroy() error
 }
 
-type MinikubeController struct {
+type Controller struct {
 	stdout io.Writer
 	stderr io.Writer
 }
 
-func NewMinikubeController(stdout, stderr io.Writer) *MinikubeController {
-	return &MinikubeController{
+func NewMinikubeController(stdout, stderr io.Writer) *Controller {
+	return &Controller{
 		stdout: stdout,
 		stderr: stderr,
 	}
 }
 
-func (mc *MinikubeController) Create(version string, nodes, cpusPerNode, memoryPerNode uint) error {
+func (mc *Controller) Create(version string, nodes, cpusPerNode, memoryPerNode uint) error {
 	cmd := exec.Command(
 		"minikube",
 		"start",
@@ -46,15 +46,15 @@ func (mc *MinikubeController) Create(version string, nodes, cpusPerNode, memoryP
 	return nil
 }
 
-func (mc *MinikubeController) Deploy(app string) error {
+func (mc *Controller) Deploy(_ string) error {
 	return nil
 }
 
-func (mc *MinikubeController) DeployWithHelm() error {
+func (mc *Controller) DeployWithHelm() error {
 	return nil
 }
 
-func (mc *MinikubeController) Destroy() error {
+func (mc *Controller) Destroy() error {
 	cmd := exec.Command(
 		"minikube",
 		"delete",

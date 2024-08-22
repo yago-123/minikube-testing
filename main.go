@@ -11,13 +11,21 @@ func main() {
 	mini := minikube.NewMinikubeController(os.Stdout, os.Stderr)
 
 	mini.Create("1.20.0", 1, 2, 2048)
-	mini.Destroy()
+	err := mini.Destroy()
+	if err != nil {
+		panic(err)
+	}
 
 	dock, err := docker.NewDockerController("credentials")
 	if err != nil {
 		panic(err)
 	}
 
-	dock.BuildImage(context.Background(), "my-image", "latest", "Dockerfile")
-	dock.PushImage(context.Background(), "my-image", "latest")
+	if err = dock.BuildImage(context.Background(), "my-image", "latest", "Dockerfile"); err != nil {
+		panic(err)
+	}
+
+	if err = dock.PushImage(context.Background(), "my-image", "latest"); err != nil {
+		panic(err)
+	}
 }

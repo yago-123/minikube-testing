@@ -10,3 +10,8 @@ main:
 lint:
 	@echo "Running linter..."
 	@golangci-lint run ./...
+
+.PHONY: imports
+imports:
+	@find . -name "*.go" | xargs goimports -w
+
