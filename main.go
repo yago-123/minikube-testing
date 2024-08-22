@@ -7,10 +7,17 @@ import (
 	"os"
 )
 
+const (
+	KubernetesVersion  = "1.20.0"
+	NumberOfNodes      = 1
+	NumberOfCPUs       = 1
+	AmountOfRAMPerNode = 2048
+)
+
 func main() {
 	mini := minikube.NewMinikubeController(os.Stdout, os.Stderr)
 
-	mini.Create("1.20.0", 1, 2, 2048)
+	_ = mini.Create(KubernetesVersion, NumberOfNodes, NumberOfCPUs, AmountOfRAMPerNode)
 	err := mini.Destroy()
 	if err != nil {
 		panic(err)
@@ -21,7 +28,7 @@ func main() {
 		panic(err)
 	}
 
-	if err = dock.BuildImage(context.Background(), "my-image", "latest", "Dockerfile"); err != nil {
+	if err = dock.BuildImage(context.Background(), "my-image", "latest", "Dockerfile", []string{}); err != nil {
 		panic(err)
 	}
 
