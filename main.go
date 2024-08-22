@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"minikube-testing/pkg/docker"
 	"minikube-testing/pkg/minikube"
+	"minikube-testing/pkg/runtime"
 	"os"
 )
 
@@ -16,7 +16,7 @@ func main() {
 		panic(err)
 	}
 
-	dock, err := docker.NewDockerController("credentials")
+	dock, err := runtime.NewDockerController("credentials")
 	if err != nil {
 		panic(err)
 	}
