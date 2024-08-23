@@ -10,7 +10,7 @@ import (
 const (
 	KubernetesVersion  = "1.20.0"
 	NumberOfNodes      = 1
-	NumberOfCPUs       = 1
+	NumberOfCPUs       = 2
 	AmountOfRAMPerNode = 2048
 )
 
@@ -28,7 +28,7 @@ func main() {
 		panic(err)
 	}
 
-	if err = dock.BuildImage(context.Background(), "my-image", "latest", "Dockerfile", []string{}); err != nil {
+	if err = dock.BuildImage(context.Background(), "my-image", "latest", []byte("Dockerfile-content"), []string{}); err != nil {
 		panic(err)
 	}
 
