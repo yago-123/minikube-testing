@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
-	"minikube-testing/pkg/minikube"
+	"log"
 	"minikube-testing/pkg/runtime"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -15,24 +17,50 @@ const (
 )
 
 func main() {
-	mini := minikube.NewMinikubeController(os.Stdout, os.Stderr)
+	// mini := minikube.NewMinikubeController(os.Stdout, os.Stderr)
 
-	_ = mini.Create(KubernetesVersion, NumberOfNodes, NumberOfCPUs, AmountOfRAMPerNode)
-	err := mini.Destroy()
+	// _ = mini.Create(KubernetesVersion, NumberOfNodes, NumberOfCPUs, AmountOfRAMPerNode)
+	// err := mini.Destroy()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	// todo(): think about better way, probably not the best option :)
+	user := os.Getenv("DOCKER_USER")
+	pass := os.Getenv("DOCKER_PASSWORD")
+
+	dock, err := runtime.NewDockerController(user, pass)
 	if err != nil {
 		panic(err)
 	}
 
-	dock, err := runtime.NewDockerController("credentials")
-	if err != nil {
+	dockerfile := `
+		# Use the official Alpine Linux base image
+		FROM alpine:latest
+		
+		# Install a text editor to create the script
+		RUN apk add --no-cache bash
+		
+		# Add a simple script to the image
+		RUN echo 'echo "Hello, World!"' > /hello.sh
+		
+		# Make the script executable
+		RUN chmod +x /hello.sh
+		
+		# Run the script when the container starts
+		CMD ["/hello.sh"]
+	`
+
+	if err = dock.BuildImage(context.Background(), "yagoninja/minikube-testing", "latest2", []byte(dockerfile), []string{}); err != nil {
 		panic(err)
 	}
 
-	if err = dock.BuildImage(context.Background(), "my-image", "latest", []byte("Dockerfile-content"), []string{}); err != nil {
-		panic(err)
-	}
-
-	if err = dock.PushImage(context.Background(), "my-image", "latest"); err != nil {
+	if err = dock.PushImage(context.Background(), "yagoninja/minikube-testing", "latest2"); err != nil {
 		panic(err)
 	}
 }

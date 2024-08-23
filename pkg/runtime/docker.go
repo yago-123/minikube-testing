@@ -5,11 +5,15 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/docker/docker/api/types/registry"
 
 	"github.com/docker/docker/api/types"
 
@@ -19,22 +23,20 @@ import (
 
 const DockerfileDefaultName = "Dockerfile"
 
-// LogMessage represents the log structure of docker when building an image
-type LogMessage struct {
-	Stream      string          `json:"stream,omitempty"`
-	ErrorDetail json.RawMessage `json:"errorDetail,omitempty"`
-	Error       string          `json:"error,omitempty"`
-}
-
 type Docker struct {
 	cli         *client.Client
 	credentials string
 }
 
-func NewDockerController(creds string) (*Docker, error) {
+func NewDockerController(user, pass string) (*Docker, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
+	}
+
+	creds, err := generateCredentials(user, pass)
+	if err != nil {
+		return &Docker{}, err
 	}
 
 	return &Docker{cli: cli, credentials: creds}, nil
@@ -65,7 +67,7 @@ func (dc *Docker) BuildImageWithOptions(ctx context.Context, dockerfile []byte, 
 	}
 	defer resp.Body.Close()
 
-	// analyze the build logs to verify correct image build (there is no other better option)
+	// analyze the build logs to verify correct image build  (NOTE: there is no alternative that can replace this)
 	if err = analyzeBuildLogs(resp.Body); err != nil {
 		return err
 	}
@@ -84,8 +86,14 @@ func (dc *Docker) PushImage(ctx context.Context, image, tag string) error {
 	if err != nil {
 		return err
 	}
+	defer push.Close()
 
-	return push.Close()
+	// analyze the push logs to verify correct push build (NOTE: there is no server response that can replace this)
+	if err = analyzePushLogs(push); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // generateBuildContext creates a buffer that contains the Dockerfile body and the dependency files required
@@ -150,7 +158,14 @@ func generateBuildContext(dockerfile []byte, filesContext []string) (*bytes.Buff
 	return buf, nil
 }
 
-// analyzeBuildLogs reads and analyzes Docker build logs to detect errors.
+// buildLogMessage represents the log structure of docker when building an image
+type buildLogMessage struct {
+	Stream      string          `json:"stream,omitempty"`
+	ErrorDetail json.RawMessage `json:"errorDetail,omitempty"`
+	Error       string          `json:"error,omitempty"`
+}
+
+// analyzeBuildLogs reads and analyzes docker build logs to detect errors
 func analyzeBuildLogs(buildLogs io.Reader) error {
 	scanner := bufio.NewScanner(buildLogs)
 	for scanner.Scan() {
@@ -161,8 +176,8 @@ func analyzeBuildLogs(buildLogs io.Reader) error {
 			continue
 		}
 
-		// unmarshal the log line into a LogMessage struct
-		var logMsg LogMessage
+		// unmarshal the log line into a buildLogMessage struct
+		var logMsg buildLogMessage
 		if err := json.Unmarshal([]byte(line), &logMsg); err != nil {
 			return fmt.Errorf("error parsing build output: %w", err)
 		}
@@ -180,4 +195,68 @@ func analyzeBuildLogs(buildLogs io.Reader) error {
 
 	// return nil if there are no errors
 	return nil
+}
+
+// pushLogMessage represents the log structure of docker when pushing an image
+type pushLogMessage struct {
+	Status      string          `json:"status"`
+	ErrorDetail json.RawMessage `json:"errorDetail"`
+	Error       string          `json:"error"`
+	Aux         json.RawMessage `json:"aux"`
+}
+
+// analyzePushLogs reads and analyzes docker push logs to detect errors
+func analyzePushLogs(pushLogs io.Reader) error {
+	scanner := bufio.NewScanner(pushLogs)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// skip empty lines if any
+		if len(line) == 0 {
+			continue
+		}
+
+		// unmarshal the log line into a buildLogMessage struct
+		var logMsg pushLogMessage
+		if err := json.Unmarshal([]byte(line), &logMsg); err != nil {
+			return fmt.Errorf("error parsing push output: %w", err)
+		}
+
+		// check if the log contains an error
+		if len(logMsg.Error) > 0 {
+			return fmt.Errorf("error during push: %s", logMsg.Error)
+		}
+
+		// check if the log contains a denied error detail
+		if len(logMsg.ErrorDetail) > 0 {
+			return fmt.Errorf("error during push: %s", string(logMsg.ErrorDetail))
+		}
+
+		// Optionally check for specific statuses if needed
+		if strings.Contains(logMsg.Status, "denied") {
+			return fmt.Errorf("access denied during push: %s", logMsg.Status)
+		}
+	}
+
+	// check for scanner errors
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading push output: %w", err)
+	}
+
+	// return nil if there are no errors
+	return nil
+}
+
+// generateCredentials turns user and password into docker OAuth credentials
+func generateCredentials(user, pass string) (string, error) {
+	authConfig := registry.AuthConfig{
+		Username: user,
+		Password: pass,
+	}
+	encodedJSON, err := json.Marshal(authConfig)
+	if err != nil {
+		return "", fmt.Errorf("error generating credentials: %w", err)
+	}
+
+	return base64.URLEncoding.EncodeToString(encodedJSON), nil
 }
