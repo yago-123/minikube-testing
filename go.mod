@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	github.com/docker/docker v27.1.2+incompatible
+	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.9.0
 )
 

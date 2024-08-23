@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+
+	"github.com/google/uuid"
 )
 
 type Minikube interface {
@@ -14,14 +16,24 @@ type Minikube interface {
 }
 
 type Controller struct {
-	stdout io.Writer
-	stderr io.Writer
+	stdout  io.Writer
+	stderr  io.Writer
+	profile string
 }
 
 func NewMinikubeController(stdout, stderr io.Writer) *Controller {
 	return &Controller{
-		stdout: stdout,
-		stderr: stderr,
+		stdout:  stdout,
+		stderr:  stderr,
+		profile: uuid.NewString(),
+	}
+}
+
+func NewMiniKubeControllerWithProfile(stdout, stderr io.Writer, profile string) *Controller {
+	return &Controller{
+		stdout:  stdout,
+		stderr:  stderr,
+		profile: profile,
 	}
 }
 
@@ -33,6 +45,7 @@ func (mc *Controller) Create(version string, nodes, cpusPerNode, memoryPerNode u
 		fmt.Sprintf("--nodes=%d", nodes),
 		fmt.Sprintf("--cpus=%d", cpusPerNode),
 		fmt.Sprintf("--memory=%d", memoryPerNode),
+		fmt.Sprintf("--profile=%s", mc.profile),
 	)
 
 	cmd.Stdout = mc.stdout
@@ -58,6 +71,7 @@ func (mc *Controller) Destroy() error {
 	cmd := exec.Command(
 		"minikube",
 		"delete",
+		fmt.Sprintf("--profile=%s", mc.profile),
 	)
 
 	cmd.Stdout = mc.stdout
