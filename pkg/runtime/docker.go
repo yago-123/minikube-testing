@@ -15,9 +15,13 @@ import (
 	"github.com/docker/docker/client"
 )
 
+const DockerfileDefaultName = "Dockerfile"
+
 type Controller interface {
 	BuildImage(ctx context.Context, image, tag, dockerfile string, files []string, args ...string) error
 	BuildImageWithOptions(ctx context.Context, dockerfile string, files []string, buildOptions types.ImageBuildOptions) error
+
+	BuildMultiStageImage(ctx context.Context) error
 
 	PushImage(ctx context.Context, image, tag string) error
 }
@@ -38,7 +42,11 @@ func NewDockerController(creds string) (*Docker, error) {
 
 func (dc *Docker) BuildImage(ctx context.Context, image, tag, dockerfile string, filesContext []string, args ...string) error {
 	options := types.ImageBuildOptions{
-		Tags: []string{fmt.Sprintf("%s:%s", image, tag)},
+		Tags:       []string{fmt.Sprintf("%s:%s", image, tag)},
+		Remove:     true, // remove intermediate containers from final image
+		NoCache:    true, // remove caching during layer build
+		Dockerfile: DockerfileDefaultName,
+		// more default options
 	}
 
 	return dc.BuildImageWithOptions(ctx, dockerfile, filesContext, options)
@@ -55,6 +63,10 @@ func (dc *Docker) BuildImageWithOptions(ctx context.Context, dockerfile string, 
 		return err
 	}
 
+	return nil
+}
+
+func (dc *Docker) BuildMultiStageImage(_ context.Context) error {
 	return nil
 }
 
@@ -82,7 +94,7 @@ func generateBuildContext(dockerfile string, filesContext []string) (*bytes.Buff
 
 	// create image header for build instructions
 	err = tarBuf.WriteHeader(&tar.Header{
-		Name: "Dockerfile",
+		Name: DockerfileDefaultName,
 		Size: int64(len(dockerfile)),
 	})
 	if err != nil {
