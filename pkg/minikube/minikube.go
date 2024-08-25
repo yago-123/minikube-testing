@@ -56,6 +56,8 @@ func (mc *Controller) Create(version string, nodes, cpusPerNode, memoryPerNode u
 		return fmt.Errorf("failed to start minikube: %w", err)
 	}
 
+	// load kubeconfig from ${HOME}/.kube/config
+
 	return nil
 }
 

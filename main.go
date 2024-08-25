@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"minikube-testing/pkg/client"
 	"minikube-testing/pkg/runtime"
 	"os"
 
@@ -17,24 +19,24 @@ const (
 )
 
 func main() {
-	// mini := minikube.NewMinikubeController(os.Stdout, os.Stderr)
-
-	// _ = mini.Create(KubernetesVersion, NumberOfNodes, NumberOfCPUs, AmountOfRAMPerNode)
-	// err := mini.Destroy()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
-	// todo(): think about better way, probably not the best option :)
-	user := os.Getenv("DOCKER_USER")
-	pass := os.Getenv("DOCKER_PASSWORD")
+	// mini := minikube.NewMinikubeController(os.Stdout, os.Stderr)
 
-	dock, err := runtime.NewDockerController(user, pass)
+	// err = mini.Create(KubernetesVersion, NumberOfNodes, NumberOfCPUs, AmountOfRAMPerNode)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// defer mini.Destroy()
+
+	// todo(): think about better way, probably not the best option :)
+	dock, err := runtime.NewDockerController(
+		os.Getenv("DOCKER_USER"),
+		os.Getenv("DOCKER_PASSWORD"),
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -60,7 +62,21 @@ func main() {
 		panic(err)
 	}
 
-	if err = dock.PushImage(context.Background(), "yagoninja/minikube-testing", "latest2"); err != nil {
+	// if err = dock.PushImage(context.Background(), "yagoninja/minikube-testing", "latest2"); err != nil {
+	// 	panic(err)
+	// }
+
+	// mini.DeployWithHelm()
+
+	client, err := client.NewClient()
+	if err != nil {
 		panic(err)
 	}
+
+	logs, err := client.CurlEndpoint(context.Background(), "http://172.17.0.3:8081/api/data")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("logs expected: %s", logs)
 }
