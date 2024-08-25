@@ -9,15 +9,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/docker/docker/api/types/registry"
-
 	"github.com/docker/docker/api/types"
-
 	img "github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 )
 
@@ -49,6 +48,23 @@ func (dc *Docker) BuildImage(ctx context.Context, image, tag string, dockerfile 
 		NoCache:    true, // remove caching during layer build
 		Dockerfile: DockerfileDefaultName,
 		// more default options
+	}
+
+	return dc.BuildImageWithOptions(ctx, dockerfile, filesContext, options)
+}
+
+func (dc *Docker) BuildImageWithContextPath(ctx context.Context, image, tag string, dockerfile []byte, contextPath string, args ...string) error {
+	options := types.ImageBuildOptions{
+		Tags:       []string{fmt.Sprintf("%s:%s", image, tag)},
+		Remove:     true, // remove intermediate containers from final image
+		NoCache:    true, // remove caching during layer build
+		Dockerfile: DockerfileDefaultName,
+		// more default options
+	}
+
+	filesContext, err := retrieveContextBuildFiles(contextPath)
+	if err != nil {
+		return fmt.Errorf("error retrieving files for context build: %w", err)
 	}
 
 	return dc.BuildImageWithOptions(ctx, dockerfile, filesContext, options)
@@ -259,4 +275,23 @@ func generateCredentials(user, pass string) (string, error) {
 	}
 
 	return base64.URLEncoding.EncodeToString(encodedJSON), nil
+}
+
+func retrieveContextBuildFiles(path string) ([]string, error) {
+	files := []string{}
+	err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() { // check if the entry is a file
+			files = append(files, path)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return []string{}, err
+	}
+
+	return files, nil
 }

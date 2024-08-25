@@ -2,12 +2,10 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: go-app
-  labels:
-    app: go-app
 spec:
   containers:
     - name: go-app
-      image: yagoninja/test-curl:latest  
+      image: yagoninja/api-server-test:0.1.0
       ports:
         - containerPort: 8080
 

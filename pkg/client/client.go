@@ -5,14 +5,20 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/portforward"
-	"k8s.io/client-go/transport/spdy"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/portforward"
+	"k8s.io/client-go/transport/spdy"
+	"sigs.k8s.io/yaml"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,36 +29,122 @@ import (
 
 const (
 	PodWaitTime        = 500 * time.Millisecond
-	PortForwardLocal   = 8080
+	PortForwardLocal   = 9191
 	PortForwardTimeout = 20 * time.Second
+
+	DefaultNamespace = "default"
 )
 
 type Client interface {
-	CurlEndpoint(ctx context.Context, url string) (string, error)
-	CurlServiceEndpoint(ctx context.Context, url string) error
+	GetPod(ctx context.Context, podName, namespace string) (*v1.Pod, error)
+	GetPodLogs(ctx context.Context, pod *v1.Pod) ([]byte, error)
+
+	RunYAML(ctx context.Context, yamlManifest []byte) error
+	DeployWithHelm() error
+
+	CurlPod(ctx context.Context, pod *v1.Pod, podPort uint, path string) (*http.Response, error)
+	CurlService(ctx context.Context, url string) error
 
 	ClientSet() *kubernetes.Clientset
 }
 
 type k8sClient struct {
-	cs         *kubernetes.Clientset
-	restConfig *rest.Config
+	cs        *kubernetes.Clientset
+	dynClient *dynamic.DynamicClient
+	config    *rest.Config
 }
 
 func NewClient() (*k8sClient, error) {
-	cs, restConfig, err := loadKubeConfig()
+	config, err := loadKubeConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error loading kubeconfig: %w", err)
 	}
 
+	// initialize Kubernetes client
+	cs, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing Kubernetes client: %w", err)
+	}
+
+	// initialize dynamic client
+	dynClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("error initializing dynamic client: %w", err)
+	}
+
 	return &k8sClient{
-		cs:         cs,
-		restConfig: restConfig,
+		cs:        cs,
+		dynClient: dynClient,
+		config:    config,
 	}, nil
 }
 
-func (c *k8sClient) CurlEndpoint(ctx context.Context, namespace, podName string, podPort uint, path string) (*http.Response, error) {
-	stopChan, err := c.portForward(ctx, namespace, podName, podPort)
+func (c *k8sClient) GetPod(ctx context.Context, podName, namespace string) (*v1.Pod, error) {
+	pod, err := c.cs.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting pod %s: %w", podName, err)
+	}
+
+	return pod, nil
+}
+
+func (c *k8sClient) GetPodLogs(ctx context.Context, pod *v1.Pod) ([]byte, error) {
+	// todo(): add additional method that retrieve logs once the pod have stopped running
+	return c.retrieveLogsFromPod(ctx, pod)
+}
+
+func (c *k8sClient) CreatePod(yaml string) error {
+	return nil
+}
+
+func (c *k8sClient) DeployWithHelm() error {
+	return nil
+}
+
+func (c *k8sClient) RunYAML(ctx context.Context, yamlManifest []byte) error {
+	// convert YAML to Unstructured
+	var obj unstructured.Unstructured
+	if err := yaml.Unmarshal(yamlManifest, &obj); err != nil {
+		return fmt.Errorf("error unmarshalling YAML: %w", err)
+	}
+
+	// create discovery client
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(c.config)
+	if err != nil {
+		return fmt.Errorf("error creating discovery client: %w", err)
+	}
+
+	// discover API resources
+	_, apiResources, err := discoveryClient.ServerGroupsAndResources()
+	if err != nil {
+		return fmt.Errorf("error retrieving server resources: %w", err)
+	}
+
+	// map API resources to GVR
+	gvr, err := findGVR(apiResources, obj.GroupVersionKind())
+	if err != nil {
+		return fmt.Errorf("error finding group version kind: %w", err)
+	}
+
+	namespace := obj.GetNamespace()
+	if namespace == "" {
+		namespace = DefaultNamespace
+	}
+
+	// create the resource
+	_, err = c.dynClient.
+		Resource(gvr).
+		Namespace(namespace).
+		Create(ctx, &obj, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("error creating resource: %w", err)
+	}
+
+	return nil
+}
+
+func (c *k8sClient) CurlPod(ctx context.Context, pod *v1.Pod, podPort uint, path string) (*http.Response, error) {
+	stopChan, err := c.portForward(ctx, pod.Namespace, pod.Name, podPort)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up port forwarding: %w", err)
 	}
@@ -61,7 +153,7 @@ func (c *k8sClient) CurlEndpoint(ctx context.Context, namespace, podName string,
 	return http.Get(fmt.Sprintf("http://localhost:%d/%s", PortForwardLocal, path))
 }
 
-func (c *k8sClient) CurlServiceEndpoint(ctx context.Context, url string) error {
+func (c *k8sClient) CurlService(ctx context.Context, url string) error {
 	// curl http://my-service.namespace-b.svc.cluster.local
 	return nil
 }
@@ -71,7 +163,7 @@ func (c *k8sClient) ClientSet() *kubernetes.Clientset {
 }
 
 // loadKubeConfig loads the kubeconfig from ${HOME}/.kube/config
-func loadKubeConfig() (*kubernetes.Clientset, *rest.Config, error) {
+func loadKubeConfig() (*rest.Config, error) {
 	// access kubeconfig file
 	kubeconfigPath := ""
 	if home := homedir.HomeDir(); home != "" {
@@ -83,21 +175,16 @@ func loadKubeConfig() (*kubernetes.Clientset, *rest.Config, error) {
 	// building config from flags
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error building config from flags: %w", err)
+		return nil, fmt.Errorf("error building config from flags: %w", err)
 	}
 
-	// initialize Kubernetes client
-	client, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error initializing Kubernetes client: %w", err)
-	}
-
-	return client, config, nil
+	return config, nil
 }
 
-// waitForPodLogs waits for the pod to
+// waitForPod waits for the pod to finish running
 func (c *k8sClient) waitForPod(ctx context.Context, pod *v1.Pod) error {
 	for {
+		// todo(): do more sophisticated wait for pod (Kubernetes API probably have watchers)
 		time.Sleep(PodWaitTime)
 
 		select {
@@ -105,7 +192,7 @@ func (c *k8sClient) waitForPod(ctx context.Context, pod *v1.Pod) error {
 			return ctx.Err() // break the loop and return if the context is done.
 		default:
 			// proceed with checking the pod status
-			p, errGet := c.cs.CoreV1().Pods("default").Get(ctx, pod.Name, metav1.GetOptions{})
+			p, errGet := c.cs.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
 			if errGet != nil {
 				return fmt.Errorf("error getting pod %s: %w", pod.Name, errGet)
 			}
@@ -120,9 +207,9 @@ func (c *k8sClient) waitForPod(ctx context.Context, pod *v1.Pod) error {
 
 // retrieveLogsFromPod retrieves the logs from the pod
 func (c *k8sClient) retrieveLogsFromPod(ctx context.Context, pod *v1.Pod) ([]byte, error) {
-	podLogOpts := v1.PodLogOptions{}
 	// retrieve logs
-	req := c.cs.CoreV1().Pods("default").GetLogs(pod.Name, &podLogOpts)
+	podLogOpts := v1.PodLogOptions{}
+	req := c.cs.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
 	logs, err := req.Stream(ctx)
 	if err != nil {
 		return []byte{}, err
@@ -142,7 +229,7 @@ func (c *k8sClient) retrieveLogsFromPod(ctx context.Context, pod *v1.Pod) ([]byt
 // portForward sets up port forwarding to the pod
 func (c *k8sClient) portForward(ctx context.Context, namespace, podName string, podPort uint) (chan struct{}, error) {
 	// create a round tripper
-	roundTripper, upgrader, err := spdy.RoundTripperFor(c.restConfig)
+	roundTripper, upgrader, err := spdy.RoundTripperFor(c.config)
 	if err != nil {
 		return nil, fmt.Errorf("error creating round tripper: %w", err)
 	}
@@ -199,4 +286,20 @@ func (c *k8sClient) portForward(ctx context.Context, namespace, podName string, 
 		// port forwarding is ready
 		return stopChan, nil
 	}
+}
+
+// findGVR returns the GroupVersionResource for the given GVK
+func findGVR(apiResources []*metav1.APIResourceList, gvk schema.GroupVersionKind) (schema.GroupVersionResource, error) {
+	for _, resourceList := range apiResources {
+		for _, resource := range resourceList.APIResources {
+			if resource.Kind == gvk.Kind && resourceList.GroupVersion == gvk.GroupVersion().String() {
+				return schema.GroupVersionResource{
+					Group:    gvk.Group,
+					Version:  gvk.Version,
+					Resource: resource.Name, // Correct field to use
+				}, nil
+			}
+		}
+	}
+	return schema.GroupVersionResource{}, fmt.Errorf("GVR for %s %s not found", gvk.GroupVersion().String(), gvk.Kind)
 }

@@ -6,9 +6,10 @@ import (
 	"github.com/docker/docker/api/types"
 )
 
-type Controller interface {
-	BuildImage(ctx context.Context, image, tag string, dockerfile []byte, files []string, args ...string) error
-	BuildImageWithOptions(ctx context.Context, dockerfile []byte, files []string, buildOptions types.ImageBuildOptions) error
+type Runtime interface {
+	BuildImage(ctx context.Context, image, tag string, dockerfile []byte, filesContext []string, args ...string) error
+	BuildImageWithOptions(ctx context.Context, dockerfile []byte, filesContext []string, buildOptions types.ImageBuildOptions) error
+	BuildImageWithContextPath(ctx context.Context, image, tag string, dockerfile []byte, contextPath string, args ...string) error
 
 	BuildMultiStageImage(ctx context.Context) error
 

@@ -25,7 +25,7 @@ func jsonHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/api/data", jsonHandler)
+	http.HandleFunc("/api", jsonHandler)
 	port := "8080"
 	log.Printf("Starting server on :%s\n", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {

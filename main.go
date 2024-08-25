@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"minikube-testing/pkg/client"
+	"minikube-testing/pkg/orchestrator"
 	"minikube-testing/pkg/runtime"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -21,16 +21,11 @@ const (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatalf("Error loading .env file: %w", err)
 	}
 
-	// mini := minikube.NewMinikubeController(os.Stdout, os.Stderr)
-
-	// err = mini.Create(KubernetesVersion, NumberOfNodes, NumberOfCPUs, AmountOfRAMPerNode)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer mini.Destroy()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
 	// todo(): think about better way, probably not the best option :)
 	dock, err := runtime.NewDockerController(
@@ -38,45 +33,92 @@ func main() {
 		os.Getenv("DOCKER_PASSWORD"),
 	)
 	if err != nil {
-		panic(err)
+		log.Fatalf("unable to start docker controller: %w", err)
 	}
 
 	dockerfile := `
-		# Use the official Alpine Linux base image
+		# Use the official Golang image as a base image
+		FROM golang:1.23-alpine AS builder
+		
+		# Set the Current Working Directory inside the container
+		WORKDIR /app
+		
+		# Copy the Go Modules manifests
+		COPY go.mod go.sum ./
+		
+		# Download Go Modules dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
+		RUN go mod download
+		
+		# Copy the source code into the container
+		COPY . .
+		
+		# Build the Go app
+		RUN go build -o main .
+		
+		# Start a new stage from scratch
 		FROM alpine:latest
 		
-		# Install a text editor to create the script
-		RUN apk add --no-cache bash
+		# Set the Current Working Directory inside the container
+		WORKDIR /root/
 		
-		# Add a simple script to the image
-		RUN echo 'echo "Hello, World!"' > /hello.sh
+		# Copy the Pre-built binary file from the previous stage
+		COPY --from=builder /app/main .
 		
-		# Make the script executable
-		RUN chmod +x /hello.sh
+		# Expose port 8080 to the outside world
+		EXPOSE 8080
 		
-		# Run the script when the container starts
-		CMD ["/hello.sh"]
+		# Command to run the executable
+		CMD ["./main"]
 	`
 
-	if err = dock.BuildImage(context.Background(), "yagoninja/minikube-testing", "latest2", []byte(dockerfile), []string{}); err != nil {
-		panic(err)
+	if err = dock.BuildImageWithContextPath(ctx, "yagoninja/api-server-test", "0.1.0", []byte(dockerfile), "build/docker/test-pod"); err != nil {
+		log.Fatalf("unable to build image: %w", err)
 	}
 
-	// if err = dock.PushImage(context.Background(), "yagoninja/minikube-testing", "latest2"); err != nil {
-	// 	panic(err)
-	// }
+	if err = dock.PushImage(ctx, "yagoninja/api-server-test", "0.1.0"); err != nil {
+		log.Fatalf("unable to push image: %w", err)
+	}
 
-	// mini.DeployWithHelm()
-
-	client, err := client.NewClient()
+	minikube := orchestrator.NewMinikube(os.Stdout, os.Stderr)
+	cli, err := minikube.Create(KubernetesVersion, NumberOfNodes, NumberOfCPUs, AmountOfRAMPerNode)
 	if err != nil {
-		panic(err)
+		log.Fatalf("unable to create minikube cluster: %w", err)
 	}
+	defer minikube.Destroy()
 
-	resp, err := client.CurlEndpoint(context.Background(), "default", "go-app", 8080, "api/data")
+	// todo(): add some sort of wait mechanism
+	time.Sleep(10 * time.Second)
+
+	yamlManifest := `
+apiVersion: v1
+kind: Pod
+metadata:
+    name: go-app
+spec:
+    containers:
+      - name: go-app
+        image: yagoninja/api-server-test:0.1.0
+        ports:
+          - containerPort: 8080
+`
+
+	err = cli.RunYAML(ctx, []byte(yamlManifest))
 	if err != nil {
-		panic(err)
+		log.Fatalf("unable to run yaml manifest: %w", err)
 	}
 
-	fmt.Println("Response: %s", resp.Body)
+	// todo(): add some sort of wait mechanism
+	time.Sleep(10 * time.Second)
+
+	pod, err := cli.GetPod(ctx, "go-app", "default")
+	if err != nil {
+		log.Fatalf("unable to get pod: %w", err)
+	}
+
+	resp, err := cli.CurlPod(ctx, pod, 8080, "api")
+	if err != nil {
+		log.Fatalf("unable to curl pod: %w", err)
+	}
+
+	log.Printf("HTTP response from %s: %d", pod.Name, resp.StatusCode)
 }

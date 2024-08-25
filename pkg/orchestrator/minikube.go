@@ -1,43 +1,39 @@
-package minikube
+package orchestrator
 
 import (
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
+
+	"minikube-testing/pkg/client"
 
 	"github.com/google/uuid"
 )
 
-type Minikube interface {
-	Create(version string, nodes, cpusPerNode, memoryPerNode uint) error
-	Deploy(app string) error
-	DeployWithHelm() error
-	Destroy() error
-}
-
-type Controller struct {
+type Minikube struct {
 	stdout  io.Writer
 	stderr  io.Writer
 	profile string
 }
 
-func NewMinikubeController(stdout, stderr io.Writer) *Controller {
-	return &Controller{
+func NewMinikube(stdout, stderr io.Writer) *Minikube {
+	return &Minikube{
 		stdout:  stdout,
 		stderr:  stderr,
 		profile: uuid.NewString(),
 	}
 }
 
-func NewMiniKubeControllerWithProfile(stdout, stderr io.Writer, profile string) *Controller {
-	return &Controller{
+func NewMinikubeWithProfile(stdout, stderr io.Writer, profile string) *Minikube {
+	return &Minikube{
 		stdout:  stdout,
 		stderr:  stderr,
 		profile: profile,
 	}
 }
 
-func (mc *Controller) Create(version string, nodes, cpusPerNode, memoryPerNode uint) error {
+func (mc *Minikube) Create(version string, nodes, cpusPerNode, memoryPerNode uint) (client.Client, error) {
 	cmd := exec.Command(
 		"minikube",
 		"start",
@@ -53,23 +49,18 @@ func (mc *Controller) Create(version string, nodes, cpusPerNode, memoryPerNode u
 
 	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf("failed to start minikube: %w", err)
+		return nil, fmt.Errorf("failed to start minikube: %w", err)
 	}
 
-	// load kubeconfig from ${HOME}/.kube/config
+	cli, err := client.NewClient()
+	if err != nil {
+		log.Fatalf("unable to create client: %w", err)
+	}
 
-	return nil
+	return cli, nil
 }
 
-func (mc *Controller) Deploy(_ string) error {
-	return nil
-}
-
-func (mc *Controller) DeployWithHelm() error {
-	return nil
-}
-
-func (mc *Controller) Destroy() error {
+func (mc *Minikube) Destroy() error {
 	cmd := exec.Command(
 		"minikube",
 		"delete",
