@@ -73,10 +73,10 @@ func main() {
 		panic(err)
 	}
 
-	logs, err := client.CurlEndpoint(context.Background(), "http://172.17.0.3:8081/api/data")
+	resp, err := client.CurlEndpoint(context.Background(), "default", "go-app", 8080, "api/data")
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("logs expected: %s", logs)
+	fmt.Println("Response: %s", resp.Body)
 }
