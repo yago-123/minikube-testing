@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/sirupsen/logrus"
 	"log"
 	"minikube-testing/pkg/orchestrator"
 	"minikube-testing/pkg/runtime"
@@ -24,6 +25,8 @@ func main() {
 		log.Fatalf("Error loading .env file: %w", err)
 	}
 
+	logger := logrus.New()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -33,7 +36,7 @@ func main() {
 		os.Getenv("DOCKER_PASSWORD"),
 	)
 	if err != nil {
-		log.Fatalf("unable to start docker controller: %w", err)
+		logger.Fatalf("unable to start docker controller: %v", err)
 	}
 
 	dockerfile := `
@@ -72,22 +75,28 @@ func main() {
 	`
 
 	if err = dock.BuildImageWithContextPath(ctx, "yagoninja/api-server-test", "0.1.0", []byte(dockerfile), "build/docker/test-pod"); err != nil {
-		log.Fatalf("unable to build image: %w", err)
+		logger.Fatalf("unable to build image: %w", err)
 	}
 
-	if err = dock.PushImage(ctx, "yagoninja/api-server-test", "0.1.0"); err != nil {
-		log.Fatalf("unable to push image: %w", err)
-	}
+	// if err = dock.PushImage(ctx, "yagoninja/api-server-test", "0.1.0"); err != nil {
+	// 	log.Fatalf("unable to push image: %w", err)
+	// }
 
 	minikube := orchestrator.NewMinikube(os.Stdout, os.Stderr)
 	cli, err := minikube.Create(KubernetesVersion, NumberOfNodes, NumberOfCPUs, AmountOfRAMPerNode)
 	if err != nil {
-		log.Fatalf("unable to create minikube cluster: %w", err)
+		logger.Fatalf("unable to create minikube cluster: %w", err)
 	}
-	defer minikube.Destroy()
+	defer minikube.Delete()
 
 	// todo(): add some sort of wait mechanism
 	time.Sleep(10 * time.Second)
+
+	err = minikube.LoadImage("yagoninja/api-server-test:0.1.0")
+	if err != nil {
+		logger.Errorf("unable to load image: %w", err)
+		return
+	}
 
 	yamlManifest := `
 apiVersion: v1
@@ -98,13 +107,15 @@ spec:
     containers:
       - name: go-app
         image: yagoninja/api-server-test:0.1.0
+        imagePullPolicy: IfNotPresent
         ports:
           - containerPort: 8080
 `
 
 	err = cli.RunYAML(ctx, []byte(yamlManifest))
 	if err != nil {
-		log.Fatalf("unable to run yaml manifest: %w", err)
+		logger.Errorf("unable to run yaml manifest: %w", err)
+		return
 	}
 
 	// todo(): add some sort of wait mechanism
@@ -112,13 +123,15 @@ spec:
 
 	pod, err := cli.GetPod(ctx, "go-app", "default")
 	if err != nil {
-		log.Fatalf("unable to get pod: %w", err)
+		logger.Errorf("unable to get pod: %w", err)
+		return
 	}
 
 	resp, err := cli.CurlPod(ctx, pod, 8080, "api")
 	if err != nil {
-		log.Fatalf("unable to curl pod: %w", err)
+		logger.Errorf("unable to curl pod: %w", err)
+		return
 	}
 
-	log.Printf("HTTP response from %s: %d", pod.Name, resp.StatusCode)
+	logger.Infof("HTTP response from %s: %d", pod.Name, resp.StatusCode)
 }

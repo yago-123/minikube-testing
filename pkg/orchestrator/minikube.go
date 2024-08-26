@@ -60,7 +60,28 @@ func (mc *Minikube) Create(version string, nodes, cpusPerNode, memoryPerNode uin
 	return cli, nil
 }
 
-func (mc *Minikube) Destroy() error {
+func (mc *Minikube) LoadImage(image string) error {
+	cmd := exec.Command(
+		"minikube",
+		"image",
+		"load",
+		"--profile",
+		mc.profile,
+		image,
+	)
+
+	cmd.Stdout = mc.stdout
+	cmd.Stderr = mc.stderr
+
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to load image %s: %w", image, err)
+	}
+
+	return nil
+}
+
+func (mc *Minikube) Delete() error {
 	cmd := exec.Command(
 		"minikube",
 		"delete",
