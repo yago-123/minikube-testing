@@ -6,7 +6,7 @@ import (
 	"log"
 	"os/exec"
 
-	"minikube-testing/pkg/client"
+	"github.com/yago-123/minikube-testing/pkg/client"
 
 	"github.com/google/uuid"
 )

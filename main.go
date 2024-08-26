@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"github.com/sirupsen/logrus"
+	"github.com/yago-123/minikube-testing/pkg/orchestrator"
+	"github.com/yago-123/minikube-testing/pkg/runtime"
 	"log"
-	"minikube-testing/pkg/orchestrator"
-	"minikube-testing/pkg/runtime"
 	"os"
 	"time"
 
