@@ -1,4 +1,5 @@
-module minikube-testing
+module github.com/yago-123/minikube-testing
+
 
 go 1.23
 
