@@ -5,14 +5,18 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/dynamic"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
+
+	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/cli"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
@@ -32,7 +36,8 @@ const (
 	PortForwardLocal   = 9191
 	PortForwardTimeout = 20 * time.Second
 
-	DefaultNamespace = "default"
+	DefaultNamespace      = "default"
+	HelmDriverEnvVariable = "HELM_DRIVER"
 )
 
 type Client interface {
@@ -40,7 +45,8 @@ type Client interface {
 	GetPodLogs(ctx context.Context, pod *v1.Pod) ([]byte, error)
 
 	RunYAML(ctx context.Context, yamlManifest []byte) error
-	DeployWithHelm() error
+	DeployHelmWithLocalChart(chartPath string, ns, release string, args map[string]interface{}) error
+	DeployHelmWithRemoteChart() error
 
 	CurlPod(ctx context.Context, pod *v1.Pod, podPort uint, path string) (*http.Response, error)
 	CurlService(ctx context.Context, url string) error
@@ -52,6 +58,9 @@ type k8sClient struct {
 	cs        *kubernetes.Clientset
 	dynClient *dynamic.DynamicClient
 	config    *rest.Config
+
+	settings     *cli.EnvSettings
+	actionConfig *action.Configuration
 }
 
 func NewClient() (*k8sClient, error) {
@@ -72,10 +81,18 @@ func NewClient() (*k8sClient, error) {
 		return nil, fmt.Errorf("error initializing dynamic client: %w", err)
 	}
 
+	settings := cli.New()
+	actionConfig := new(action.Configuration)
+	if err = actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), os.Getenv(HelmDriverEnvVariable), nil); err != nil {
+		return nil, fmt.Errorf("error initializing action config: %w", err)
+	}
+
 	return &k8sClient{
-		cs:        cs,
-		dynClient: dynClient,
-		config:    config,
+		cs:           cs,
+		dynClient:    dynClient,
+		config:       config,
+		settings:     settings,
+		actionConfig: actionConfig,
 	}, nil
 }
 
@@ -97,7 +114,28 @@ func (c *k8sClient) CreatePod(yaml string) error {
 	return nil
 }
 
-func (c *k8sClient) DeployWithHelm() error {
+func (c *k8sClient) DeployHelmWithLocalChart(chartPath string, ns, release string, args map[string]interface{}) error {
+	// load the Helm chart
+	chart, err := loader.Load(chartPath)
+	if err != nil {
+		return fmt.Errorf("error loading chart: %w", err)
+	}
+
+	// create install action
+	install := action.NewInstall(c.actionConfig)
+	install.ReleaseName = release
+	install.Namespace = ns
+
+	// install the chart
+	_, err = install.Run(chart, args)
+	if err != nil {
+		return fmt.Errorf("error during chart installation: %w", err)
+	}
+
+	return nil
+}
+
+func (c *k8sClient) DeployHelmWithRemoteChart() error {
 	return nil
 }
 

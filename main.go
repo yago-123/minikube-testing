@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"github.com/sirupsen/logrus"
-	"github.com/yago-123/minikube-testing/pkg/orchestrator"
-	"github.com/yago-123/minikube-testing/pkg/runtime"
 	"log"
 	"os"
 	"time"
+
+	"github.com/sirupsen/logrus"
+	"github.com/yago-123/minikube-testing/pkg/orchestrator"
+	"github.com/yago-123/minikube-testing/pkg/runtime"
 
 	"github.com/joho/godotenv"
 )
