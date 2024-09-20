@@ -22,12 +22,26 @@ import (
 
 const DockerfileDefaultName = "Dockerfile"
 
-type Docker struct {
-	cli         *client.Client
-	credentials string
+type dockerCredentials struct {
+	enabled bool
+	creds   string
 }
 
-func NewDockerController(user, pass string) (*Docker, error) {
+type Docker struct {
+	cli   *client.Client
+	creds dockerCredentials
+}
+
+func NewDockerController() (*Docker, error) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, err
+	}
+
+	return &Docker{cli: cli, creds: dockerCredentials{enabled: false}}, nil
+}
+
+func NewDockerControllerWithCreds(user, pass string) (*Docker, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
@@ -38,7 +52,7 @@ func NewDockerController(user, pass string) (*Docker, error) {
 		return &Docker{}, err
 	}
 
-	return &Docker{cli: cli, credentials: creds}, nil
+	return &Docker{cli: cli, creds: dockerCredentials{enabled: true, creds: creds}}, nil
 }
 
 func (dc *Docker) BuildImage(ctx context.Context, image, tag string, dockerfile []byte, filesContext []string, args ...string) error {
@@ -96,8 +110,12 @@ func (dc *Docker) BuildMultiStageImage(_ context.Context) error {
 }
 
 func (dc *Docker) PushImage(ctx context.Context, image, tag string) error {
+	if !dc.creds.enabled {
+		return fmt.Errorf("credentials not provided, initialize with NewDockerControllerWithCreds function")
+	}
+
 	push, err := dc.cli.ImagePush(ctx, fmt.Sprintf("%s:%s", image, tag), img.PushOptions{
-		RegistryAuth: dc.credentials,
+		RegistryAuth: dc.creds.creds,
 	})
 	if err != nil {
 		return err

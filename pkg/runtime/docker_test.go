@@ -11,7 +11,7 @@ import (
 )
 
 func TestBuildImageWithoutErrors(t *testing.T) {
-	dock, err := NewDockerController("", "")
+	dock, err := NewDockerControllerWithCreds("", "")
 	require.NoError(t, err)
 
 	dockerfile, err := os.ReadFile("_fixture/Dockerfile")
@@ -23,7 +23,7 @@ func TestBuildImageWithoutErrors(t *testing.T) {
 }
 
 func TestBuildImageWithoutBuildContext(t *testing.T) {
-	dock, err := NewDockerController("", "")
+	dock, err := NewDockerControllerWithCreds("", "")
 	require.NoError(t, err)
 
 	dockerfile, err := os.ReadFile("_fixture/Dockerfile")

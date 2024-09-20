@@ -32,7 +32,7 @@ func main() {
 	defer cancel()
 
 	// todo(): think about better way, probably not the best option :)
-	dock, err := runtime.NewDockerController(
+	dock, err := runtime.NewDockerControllerWithCreds(
 		os.Getenv("DOCKER_USER"),
 		os.Getenv("DOCKER_PASSWORD"),
 	)
