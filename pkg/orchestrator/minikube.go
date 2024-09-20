@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"fmt"
 	"io"
-	"log"
 	"os/exec"
 
 	"github.com/yago-123/minikube-testing/pkg/client"
@@ -54,7 +53,7 @@ func (mc *Minikube) Create(version string, nodes, cpusPerNode, memoryPerNode uin
 
 	cli, err := client.NewClient()
 	if err != nil {
-		log.Fatalf("unable to create client: %w", err)
+		return nil, fmt.Errorf("unable to create client: %w", err)
 	}
 
 	return cli, nil

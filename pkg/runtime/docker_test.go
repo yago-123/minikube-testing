@@ -1,4 +1,4 @@
-package runtime
+package runtime //nolint:testpackage // no need to split test package
 
 import (
 	"bytes"

@@ -54,7 +54,7 @@ type Client interface {
 	ClientSet() *kubernetes.Clientset
 }
 
-type k8sClient struct {
+type K8sClient struct {
 	cs        *kubernetes.Clientset
 	dynClient *dynamic.DynamicClient
 	config    *rest.Config
@@ -63,7 +63,7 @@ type k8sClient struct {
 	actionConfig *action.Configuration
 }
 
-func NewClient() (*k8sClient, error) {
+func NewClient() (*K8sClient, error) {
 	config, err := loadKubeConfig()
 	if err != nil {
 		return nil, fmt.Errorf("error loading kubeconfig: %w", err)
@@ -87,7 +87,7 @@ func NewClient() (*k8sClient, error) {
 		return nil, fmt.Errorf("error initializing action config: %w", err)
 	}
 
-	return &k8sClient{
+	return &K8sClient{
 		cs:           cs,
 		dynClient:    dynClient,
 		config:       config,
@@ -96,7 +96,7 @@ func NewClient() (*k8sClient, error) {
 	}, nil
 }
 
-func (c *k8sClient) GetPod(ctx context.Context, podName, namespace string) (*v1.Pod, error) {
+func (c *K8sClient) GetPod(ctx context.Context, podName, namespace string) (*v1.Pod, error) {
 	pod, err := c.cs.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting pod %s: %w", podName, err)
@@ -105,16 +105,16 @@ func (c *k8sClient) GetPod(ctx context.Context, podName, namespace string) (*v1.
 	return pod, nil
 }
 
-func (c *k8sClient) GetPodLogs(ctx context.Context, pod *v1.Pod) ([]byte, error) {
+func (c *K8sClient) GetPodLogs(ctx context.Context, pod *v1.Pod) ([]byte, error) {
 	// todo(): add additional method that retrieve logs once the pod have stopped running
 	return c.retrieveLogsFromPod(ctx, pod)
 }
 
-func (c *k8sClient) CreatePod(yaml string) error {
+func (c *K8sClient) CreatePod() error {
 	return nil
 }
 
-func (c *k8sClient) DeployHelmWithLocalChart(chartPath string, ns, release string, args map[string]interface{}) error {
+func (c *K8sClient) DeployHelmWithLocalChart(chartPath string, ns, release string, args map[string]interface{}) error {
 	// load the Helm chart
 	chart, err := loader.Load(chartPath)
 	if err != nil {
@@ -135,11 +135,11 @@ func (c *k8sClient) DeployHelmWithLocalChart(chartPath string, ns, release strin
 	return nil
 }
 
-func (c *k8sClient) DeployHelmWithRemoteChart() error {
+func (c *K8sClient) DeployHelmWithRemoteChart() error {
 	return nil
 }
 
-func (c *k8sClient) RunYAML(ctx context.Context, yamlManifest []byte) error {
+func (c *K8sClient) RunYAML(ctx context.Context, yamlManifest []byte) error {
 	// convert YAML to Unstructured
 	var obj unstructured.Unstructured
 	if err := yaml.Unmarshal(yamlManifest, &obj); err != nil {
@@ -181,7 +181,7 @@ func (c *k8sClient) RunYAML(ctx context.Context, yamlManifest []byte) error {
 	return nil
 }
 
-func (c *k8sClient) CurlPod(ctx context.Context, pod *v1.Pod, podPort uint, path string) (*http.Response, error) {
+func (c *K8sClient) CurlPod(ctx context.Context, pod *v1.Pod, podPort uint, path string) (*http.Response, error) {
 	stopChan, err := c.portForward(ctx, pod.Namespace, pod.Name, podPort)
 	if err != nil {
 		return nil, fmt.Errorf("error setting up port forwarding: %w", err)
@@ -191,12 +191,12 @@ func (c *k8sClient) CurlPod(ctx context.Context, pod *v1.Pod, podPort uint, path
 	return http.Get(fmt.Sprintf("http://localhost:%d/%s", PortForwardLocal, path))
 }
 
-func (c *k8sClient) CurlService(ctx context.Context, url string) error {
+func (c *K8sClient) CurlService(ctx context.Context, url string) error {
 	// curl http://my-service.namespace-b.svc.cluster.local
 	return nil
 }
 
-func (c *k8sClient) ClientSet() *kubernetes.Clientset {
+func (c *K8sClient) ClientSet() *kubernetes.Clientset {
 	return c.cs
 }
 
@@ -220,7 +220,7 @@ func loadKubeConfig() (*rest.Config, error) {
 }
 
 // waitForPod waits for the pod to finish running
-func (c *k8sClient) waitForPod(ctx context.Context, pod *v1.Pod) error {
+func (c *K8sClient) waitForPod(ctx context.Context, pod *v1.Pod) error {
 	for {
 		// todo(): do more sophisticated wait for pod (Kubernetes API probably have watchers)
 		time.Sleep(PodWaitTime)
@@ -244,7 +244,7 @@ func (c *k8sClient) waitForPod(ctx context.Context, pod *v1.Pod) error {
 }
 
 // retrieveLogsFromPod retrieves the logs from the pod
-func (c *k8sClient) retrieveLogsFromPod(ctx context.Context, pod *v1.Pod) ([]byte, error) {
+func (c *K8sClient) retrieveLogsFromPod(ctx context.Context, pod *v1.Pod) ([]byte, error) {
 	// retrieve logs
 	podLogOpts := v1.PodLogOptions{}
 	req := c.cs.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
@@ -265,7 +265,7 @@ func (c *k8sClient) retrieveLogsFromPod(ctx context.Context, pod *v1.Pod) ([]byt
 }
 
 // portForward sets up port forwarding to the pod
-func (c *k8sClient) portForward(ctx context.Context, namespace, podName string, podPort uint) (chan struct{}, error) {
+func (c *K8sClient) portForward(ctx context.Context, namespace, podName string, podPort uint) (chan struct{}, error) {
 	// create a round tripper
 	roundTripper, upgrader, err := spdy.RoundTripperFor(c.config)
 	if err != nil {

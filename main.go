@@ -20,15 +20,22 @@ const (
 	AmountOfRAMPerNode = 2048
 )
 
+const (
+	sleepTime  = 10 * time.Second
+	ctxTimeout = 5 * time.Minute
+
+	podPort = 8080
+)
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatalf("Error loading .env file: %w", err)
+		log.Fatalf("Error loading .env file: %v", err)
 	}
 
 	logger := logrus.New()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
 	// todo(): think about better way, probably not the best option :)
@@ -76,7 +83,7 @@ func main() {
 	`
 
 	if err = dock.BuildImageWithContextPath(ctx, "yagoninja/api-server-test", "0.1.0", []byte(dockerfile), "build/docker/test-pod"); err != nil {
-		logger.Fatalf("unable to build image: %w", err)
+		logger.Fatalf("unable to build image: %v", err)
 	}
 
 	// if err = dock.PushImage(ctx, "yagoninja/api-server-test", "0.1.0"); err != nil {
@@ -86,16 +93,16 @@ func main() {
 	minikube := orchestrator.NewMinikube(os.Stdout, os.Stderr)
 	cli, err := minikube.Create(KubernetesVersion, NumberOfNodes, NumberOfCPUs, AmountOfRAMPerNode)
 	if err != nil {
-		logger.Fatalf("unable to create minikube cluster: %w", err)
+		logger.Fatalf("unable to create minikube cluster: %v", err)
 	}
 	defer minikube.Delete()
 
 	// todo(): add some sort of wait mechanism
-	time.Sleep(10 * time.Second)
+	time.Sleep(sleepTime)
 
 	err = minikube.LoadImage("yagoninja/api-server-test:0.1.0")
 	if err != nil {
-		logger.Errorf("unable to load image: %w", err)
+		logger.Errorf("unable to load image: %v", err)
 		return
 	}
 
@@ -115,22 +122,22 @@ spec:
 
 	err = cli.RunYAML(ctx, []byte(yamlManifest))
 	if err != nil {
-		logger.Errorf("unable to run yaml manifest: %w", err)
+		logger.Errorf("unable to run yaml manifest: %v", err)
 		return
 	}
 
 	// todo(): add some sort of wait mechanism
-	time.Sleep(10 * time.Second)
+	time.Sleep(sleepTime)
 
 	pod, err := cli.GetPod(ctx, "go-app", "default")
 	if err != nil {
-		logger.Errorf("unable to get pod: %w", err)
+		logger.Errorf("unable to get pod: %v", err)
 		return
 	}
 
-	resp, err := cli.CurlPod(ctx, pod, 8080, "api")
+	resp, err := cli.CurlPod(ctx, pod, podPort, "api")
 	if err != nil {
-		logger.Errorf("unable to curl pod: %w", err)
+		logger.Errorf("unable to curl pod: %v", err)
 		return
 	}
 
