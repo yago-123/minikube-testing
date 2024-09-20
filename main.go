@@ -100,7 +100,7 @@ func main() {
 	// todo(): add some sort of wait mechanism
 	time.Sleep(sleepTime)
 
-	err = minikube.LoadImage("yagoninja/api-server-test:0.1.0")
+	err = minikube.LoadImage("yagoninja/api-server-test", "0.1.0")
 	if err != nil {
 		logger.Errorf("unable to load image: %v", err)
 		return
